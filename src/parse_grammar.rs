@@ -8,60 +8,22 @@ use serde::Deserialize;
 #[allow(non_camel_case_types)]
 #[allow(clippy::upper_case_acronyms)]
 pub enum RuleJSON {
-    ALIAS {
-        content: Box<RuleJSON>,
-        named: bool,
-        value: String,
-    },
+    ALIAS { content: Box<RuleJSON>, named: bool, value: String },
     BLANK,
-    STRING {
-        value: String,
-    },
-    PATTERN {
-        value: String,
-        flags: Option<String>,
-    },
-    SYMBOL {
-        name: String,
-    },
-    CHOICE {
-        members: Vec<RuleJSON>,
-    },
-    FIELD {
-        name: String,
-        content: Box<RuleJSON>,
-    },
-    SEQ {
-        members: Vec<RuleJSON>,
-    },
-    REPEAT {
-        content: Box<RuleJSON>,
-    },
-    REPEAT1 {
-        content: Box<RuleJSON>,
-    },
-    PREC_DYNAMIC {
-        value: i32,
-        content: Box<RuleJSON>,
-    },
-    PREC_LEFT {
-        value: PrecedenceValueJSON,
-        content: Box<RuleJSON>,
-    },
-    PREC_RIGHT {
-        value: PrecedenceValueJSON,
-        content: Box<RuleJSON>,
-    },
-    PREC {
-        value: PrecedenceValueJSON,
-        content: Box<RuleJSON>,
-    },
-    TOKEN {
-        content: Box<RuleJSON>,
-    },
-    IMMEDIATE_TOKEN {
-        content: Box<RuleJSON>,
-    },
+    STRING { value: String },
+    PATTERN { value: String, flags: Option<String> },
+    SYMBOL { name: String },
+    CHOICE { members: Vec<RuleJSON> },
+    FIELD { name: String, content: Box<RuleJSON> },
+    SEQ { members: Vec<RuleJSON> },
+    REPEAT { content: Box<RuleJSON> },
+    REPEAT1 { content: Box<RuleJSON> },
+    PREC_DYNAMIC { value: i32, content: Box<RuleJSON> },
+    PREC_LEFT { value: PrecedenceValueJSON, content: Box<RuleJSON> },
+    PREC_RIGHT { value: PrecedenceValueJSON, content: Box<RuleJSON> },
+    PREC { value: PrecedenceValueJSON, content: Box<RuleJSON> },
+    TOKEN { content: Box<RuleJSON> },
+    IMMEDIATE_TOKEN { content: Box<RuleJSON> },
 }
 
 #[derive(Debug, Deserialize)]

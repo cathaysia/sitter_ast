@@ -7,12 +7,25 @@
 mod parse_grammar;
 use std::collections::HashSet;
 
+use log::*;
 pub use parse_grammar::*;
 
 use convert_case::{Case, Casing};
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::Ident;
+use tracing_subscriber::fmt::format;
+
+macro_rules! ident {
+    ($id:expr) => {
+        syn::Ident::new($id, proc_macro2::Span::call_site())
+    };
+}
+macro_rules! syn_lit {
+    ($id:expr) => {
+        syn::LitStr::new($id, proc_macro2::Span::call_site())
+    };
+}
 
 const KW_MAPPING: [(&str, &str); 54] = [
     ("as", "KW_AS"),
@@ -72,10 +85,7 @@ const KW_MAPPING: [(&str, &str); 54] = [
 ];
 
 pub fn to_ident(value: &str) -> String {
-    if let Some(v) = KW_MAPPING
-        .iter()
-        .find_map(|(k, v)| if *k == value { Some(v) } else { None })
-    {
+    if let Some(v) = KW_MAPPING.iter().find_map(|(k, v)| if *k == value { Some(v) } else { None }) {
         return v.to_case(Case::UpperCamel);
     }
 
@@ -135,14 +145,12 @@ impl GrammarJSON {
 
 impl RuleJSON {
     fn generate(&self, ident: &Ident, kind: &syn::LitStr) -> anyhow::Result<TokenStream> {
+        trace!("generate: {self:?}");
+
         let mut res = quote! {};
 
         match self {
-            RuleJSON::ALIAS {
-                content,
-                named,
-                value,
-            } => {}
+            RuleJSON::ALIAS { content, named, value } => {}
             RuleJSON::BLANK => {}
             RuleJSON::STRING { value } => {
                 let kind = syn::LitStr::new(&value, Span::call_site());
@@ -223,52 +231,35 @@ impl RuleJSON {
                             });
                         }
                         RuleJSON::SEQ { members } => {
-                            let ident =
-                                format!("{}_TOKEN_{}", ident, idx).to_case(Case::UpperCamel);
-                            let ident = syn::Ident::new(&ident, Span::call_site());
-                            let kind = syn::LitStr::new("", Span::call_site());
+                            let mut mid = quote! {};
+                            let mut childs = vec![];
 
-                            {
-                                let mut mem = quote! {};
-                                for m in members {
-                                    match m {
-                                        RuleJSON::CHOICE { members } => {
-                                            let ident = format!("{}_TOKEN_{}", ident, idx)
-                                                .to_case(Case::UpperCamel);
-                                            let ident = syn::Ident::new(&ident, Span::call_site());
-                                            let kind = syn::LitStr::new("", Span::call_site());
-                                            let mut mem = quote! {};
-
-                                            for item in members {
-                                                match item {
-                                                    RuleJSON::SYMBOL { name } => {
-                                                        let ident = syn::Ident::new(
-                                                            &name.to_case(Case::UpperCamel),
-                                                            Span::call_site(),
-                                                        );
-                                                        mem.extend(quote! {
-                                                            #ident(#ident),
-                                                        });
-                                                    }
-                                                    _ => {}
-                                                }
-                                            }
-
-                                            res.extend(quote! {
-                                                pub enum #ident {
-                                                    #mem
-                                                }
-                                            })
-                                        }
-                                        _ => {}
+                            for item in members {
+                                match item {
+                                    RuleJSON::SYMBOL { name } => {
+                                        childs.push(name.clone());
+                                        let ident = ident!(&name.to_case(Case::UpperCamel));
+                                        mid.extend(quote! {
+                                            #ident,
+                                        });
+                                        let sub = ident!(
+                                            &format!("TOKEN_{idx}").to_case(Case::UpperCamel)
+                                        );
+                                        mem.extend(quote! {
+                                            #sub(#mid),
+                                        })
                                     }
+                                    RuleJSON::CHOICE { members } => {
+                                        let ident = ident!(&format!("{ident}_TOKEN_{idx}")
+                                            .to_case(Case::UpperCamel));
+                                        let kind = syn_lit!("");
+                                        mem.extend(quote! {
+                                            #ident(#ident),
+                                        });
+                                        res.extend(item.generate(&ident, &kind)?);
+                                    }
+                                    _ => {}
                                 }
-
-                                res.extend(quote! {
-                                    #[derive(Debug, Default)]
-                                    pub struct #ident {
-                                    }
-                                });
                             }
                         }
                         _ => mid.extend(quote! {
@@ -387,24 +378,6 @@ impl RuleJSON {
                         value: Vec<#token_ident>
                     }
 
-                    impl TSParser for #ident {
-                        fn parse(node: tree_sitter::Node<'_>, source: &[u8]) -> anyhow::Result<Self>
-                        where
-                            Self: Sized,
-                        {
-                            if node.kind() != #kind || node.is_error() {
-                                return Err(anyhow::anyhow!("Bad Grammar"));
-                            };
-
-                            let mut res = Self::default();
-
-                            for node in node.children(&mut node.walk()) {
-                                res.value.push(TSParser::parse(node, source)?);
-                            }
-
-                            Ok(res)
-                        }
-                    }
                 });
             }
             RuleJSON::REPEAT1 { content } => {

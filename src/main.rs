@@ -13,6 +13,8 @@ use sitter_ast::RuleJSON;
 #[derive(clap::Parser)]
 struct Args {
     file: String,
+    #[clap(short)]
+    output: Option<String>,
 }
 
 fn main() {
@@ -49,7 +51,11 @@ fn main() {
     res.extend(snippet);
 
     // println!("{:#?}", ast);
-    println!("{:}", res);
+    if let Some(output) = args.output {
+        std::fs::write(output, res.to_string()).unwrap();
+    } else {
+        println!("{:}", res);
+    }
 }
 
 fn setup_log() {
@@ -57,11 +63,6 @@ fn setup_log() {
 
     tracing_subscriber::registry()
         .with(EnvFilter::from_default_env())
-        .with(
-            fmt::layer()
-                .with_thread_names(true)
-                .with_file(true)
-                .with_line_number(true),
-        )
+        .with(fmt::layer().with_thread_names(true).with_file(true).with_line_number(true))
         .init();
 }
