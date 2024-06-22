@@ -23,29 +23,7 @@ fn main() {
     let contnet = std::fs::read_to_string(args.file).unwrap();
 
     let ast: GrammarJSON = serde_json::from_str(&contnet).unwrap();
-    let mut res = quote! {
-        #![allow(non_camel_case_types)]
-        #![allow(unused_variables)]
-        #![allow(clippy::upper_case_acronyms)]
-
-        pub trait TSParser {
-            fn parse(node: tree_sitter::Node<'_>, source: &[u8]) -> anyhow::Result<Self>
-            where
-                Self: Sized;
-        }
-
-        fn utf8_text<'a>(node: tree_sitter::Node<'_>, source: &'a [u8]) -> Result<&'a str, std::str::Utf8Error> {
-            let start = node.start_byte();
-            let end = node.end_byte();
-
-            if end >= start {
-                std::str::from_utf8(&source[start..end])
-            } else {
-                std::str::from_utf8(&source[start..])
-            }
-        }
-
-    };
+    let mut res = quote! {};
 
     let snippet = ast.to_toke_stream().unwrap();
     res.extend(snippet);
