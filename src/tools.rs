@@ -62,7 +62,7 @@ pub fn to_ident(value: &str) -> String {
         return v.to_case(Case::UpperCamel);
     }
 
-    value
+    let value = value
         .replace(" ", "_")
         .replace("&", "And")
         .replace("|", "Or")
@@ -98,5 +98,11 @@ pub fn to_ident(value: &str) -> String {
         .replace(" ", "Space")
         .replace("\t", "Tab")
         .replace("\n", "Newline")
-        .replace("\r", "CarriageReturn")
+        .replace("\r", "CarriageReturn");
+
+    if value.starts_with(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']) {
+        return "N_".to_owned() + &value;
+    }
+
+    value
 }

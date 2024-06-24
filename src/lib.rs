@@ -136,9 +136,12 @@ impl RuleJSON {
                         RuleJSON::BLANK => mem.extend(quote! {
                             Blank,
                         }),
-                        _ => mid.extend(quote! {
-                            "todo" => { todo!() },
-                        }),
+                        _ => {
+                            debug!("unhandled case for CHOICE: {item:?}");
+                            mid.extend(quote! {
+                                "todo" => { todo!() },
+                            })
+                        }
                     }
                 }
 
@@ -232,7 +235,26 @@ impl RuleJSON {
                                 pub #field_name: #field_type,
                             });
                         }
-                        _ => {}
+                        RuleJSON::PATTERN { value, flags: _ } => {
+                            let name = format!("{ident}_TOKEN_{idx}");
+                            let field_name = ident!(&name.to_case(Case::Snake));
+                            let field_type = ident!(&name.to_case(Case::UpperCamel));
+                            mem.extend(quote! {
+                                pub #field_name: #field_type,
+                            });
+                        }
+                        RuleJSON::IMMEDIATE_TOKEN { content } => {
+                            let name = format!("{ident}_TOKEN_{idx}");
+                            let field_name = ident!(&name.to_case(Case::Snake));
+                            let field_type = ident!(&name.to_case(Case::UpperCamel));
+                            res.extend(content.generate(&field_type)?);
+                            mem.extend(quote! {
+                                pub #field_name: #field_type,
+                            });
+                        }
+                        _ => {
+                            debug!("unhandled case for SEQ: {item:?}");
+                        }
                     }
                 }
                 res.extend(quote! {
@@ -256,7 +278,6 @@ impl RuleJSON {
                     pub struct #ident {
                         value: Vec<#token_ident>
                     }
-
                 });
             }
             RuleJSON::REPEAT1 { content } => {
@@ -274,22 +295,12 @@ impl RuleJSON {
                     }
                 });
             }
-            RuleJSON::PREC_DYNAMIC { value: _, content } => {
-                res.extend(content.generate(ident)?);
-            }
-            RuleJSON::PREC_LEFT { value: _, content } => {
-                res.extend(content.generate(ident)?);
-            }
-            RuleJSON::PREC_RIGHT { value: _, content } => {
-                res.extend(content.generate(ident)?);
-            }
-            RuleJSON::PREC { value: _, content } => {
-                res.extend(content.generate(ident)?);
-            }
-            RuleJSON::TOKEN { content } => {
-                res.extend(content.generate(ident)?);
-            }
-            RuleJSON::IMMEDIATE_TOKEN { content } => {
+            RuleJSON::PREC_DYNAMIC { value: _, content }
+            | RuleJSON::PREC_LEFT { value: _, content }
+            | RuleJSON::PREC_RIGHT { value: _, content }
+            | RuleJSON::PREC { value: _, content }
+            | RuleJSON::TOKEN { content }
+            | RuleJSON::IMMEDIATE_TOKEN { content } => {
                 res.extend(content.generate(ident)?);
             }
         }
