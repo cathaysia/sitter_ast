@@ -6,8 +6,6 @@
 // mod f;
 mod parse_grammar;
 use std::collections::HashSet;
-mod tools;
-pub use tools::*;
 
 use log::*;
 pub use parse_grammar::*;
@@ -44,7 +42,7 @@ impl GrammarJSON {
 
 impl RuleJSON {
     pub fn generate(&self, ident: &Ident) -> anyhow::Result<TokenStream> {
-        trace!("generate: {self:?}");
+        trace!("generate: {ident} - {self:?}");
 
         let mut res = quote! {};
 
@@ -70,20 +68,15 @@ impl RuleJSON {
             }
             RuleJSON::CHOICE { members } => {
                 let mut mem = quote! {};
-                let mut mid = quote! {};
                 for (idx, item) in members.iter().enumerate() {
                     match item {
-                        RuleJSON::STRING { value } => {
-                            let condition = syn::LitStr::new(value, Span::call_site());
+                        RuleJSON::STRING { value: _ } => {
                             let ident = {
-                                let value = to_ident(value).to_case(Case::UpperCamel);
-                                syn::Ident::new(&value, Span::call_site())
+                                let name = format!("{ident}_TOKEN_{idx}");
+                                syn::Ident::new(&name.to_case(Case::UpperCamel), Span::call_site())
                             };
                             mem.extend(quote! {
                                 #ident,
-                            });
-                            mid.extend(quote! {
-                                #condition => Self::#ident,
                             });
                         }
                         RuleJSON::SYMBOL { name } => {
@@ -133,14 +126,33 @@ impl RuleJSON {
                                 });
                             }
                         }
+                        RuleJSON::ALIAS { content: _, named, value: _ } => {
+                            if !named {
+                                continue;
+                            }
+                            let name = format!("{ident}_TOKEN_{idx}");
+                            let field_type = ident!(&name.to_case(Case::UpperCamel));
+                            res.extend(item.generate(&field_type)?);
+
+                            mem.extend(quote! {
+                                #field_type(#field_type),
+                            });
+                        }
                         RuleJSON::BLANK => mem.extend(quote! {
                             Blank,
                         }),
+                        RuleJSON::CHOICE { members: _ }
+                        | RuleJSON::PATTERN { value: _, flags: _ } => {
+                            let name = format!("{ident}_TOKEN_{idx}");
+                            let field_type = ident!(&name.to_case(Case::UpperCamel));
+                            res.extend(item.generate(&field_type)?);
+
+                            mem.extend(quote! {
+                                #field_type(#field_type),
+                            });
+                        }
                         _ => {
                             debug!("unhandled case for CHOICE: {item:?}");
-                            mid.extend(quote! {
-                                "todo" => { todo!() },
-                            })
                         }
                     }
                 }
@@ -227,18 +239,20 @@ impl RuleJSON {
                                 pub #field_name: #field_type,
                             })
                         }
-                        RuleJSON::STRING { value } => {
-                            let name = to_ident(value);
+                        RuleJSON::STRING { value: _ } => {
+                            let name = format!("{ident}_TOKEN_{idx}");
                             let field_name = ident!(&name.to_case(Case::Snake));
                             let field_type = ident!(&name.to_case(Case::UpperCamel));
+                            res.extend(item.generate(&field_type)?);
                             mem.extend(quote! {
                                 pub #field_name: #field_type,
                             });
                         }
-                        RuleJSON::PATTERN { value, flags: _ } => {
+                        RuleJSON::PATTERN { value: _, flags: _ } => {
                             let name = format!("{ident}_TOKEN_{idx}");
                             let field_name = ident!(&name.to_case(Case::Snake));
                             let field_type = ident!(&name.to_case(Case::UpperCamel));
+                            res.extend(item.generate(&field_type)?);
                             mem.extend(quote! {
                                 pub #field_name: #field_type,
                             });
@@ -251,6 +265,35 @@ impl RuleJSON {
                             mem.extend(quote! {
                                 pub #field_name: #field_type,
                             });
+                        }
+                        RuleJSON::REPEAT1 { content } | RuleJSON::REPEAT { content } => {
+                            let name = format!("{ident}_TOKEN_{idx}");
+                            let field_name = ident!(&name.to_case(Case::Snake));
+                            let field_type = ident!(&name.to_case(Case::UpperCamel));
+                            res.extend(content.generate(&field_type)?);
+                            mem.extend(quote! {
+                                pub #field_name: Vec<#field_type>,
+                            });
+                        }
+                        RuleJSON::SEQ { members: _ } => {
+                            let name = format!("{ident}_TOKEN_{idx}");
+                            let field_name = ident!(&name.to_case(Case::Snake));
+                            let field_type = ident!(&name.to_case(Case::UpperCamel));
+
+                            res.extend(item.generate(&field_type)?);
+                            mem.extend(quote! {
+                                pub #field_name: #field_type,
+                            })
+                        }
+                        RuleJSON::TOKEN { content: _ } => {
+                            let name = format!("{ident}_TOKEN_{idx}");
+                            let field_name = ident!(&name.to_case(Case::Snake));
+                            let field_type = ident!(&name.to_case(Case::UpperCamel));
+
+                            res.extend(item.generate(&field_type)?);
+                            mem.extend(quote! {
+                                pub #field_name: #field_type,
+                            })
                         }
                         _ => {
                             debug!("unhandled case for SEQ: {item:?}");
