@@ -28,7 +28,28 @@ macro_rules! lit_str {
 }
 impl GrammarJSON {
     pub fn to_toke_stream(&self) -> anyhow::Result<TokenStream> {
-        let mut res = TokenStream::new();
+        let mut res = quote! {
+            use tree_sitter::Node as TSNode;
+
+            pub type ParseResult<T> = anyhow::Result<T>;
+
+            trait TSParser {
+                fn parse(root: TSNode<'_>, source: &[u8]) -> ParseResult<Self>
+                where
+                    Self: Sized;
+            }
+
+            fn utf8_text<'a>(node: TSNode<'_>, source: &'a [u8]) -> Result<&'a str, std::str::Utf8Error> {
+                let start = node.start_byte();
+                let end = node.end_byte();
+
+                if end >= start {
+                    std::str::from_utf8(&source[start..end])
+                } else {
+                    std::str::from_utf8(&source[start..])
+                }
+            }
+        };
         for (name, rule) in &self.rules {
             let ident = ident!(&name.to_case(Case::UpperCamel));
 
@@ -39,8 +60,18 @@ impl GrammarJSON {
         for item in &self.externals {
             if let RuleJSON::SYMBOL { name } = item {
                 let ident = ident!(&name.to_case(Case::UpperCamel));
+                let kind = lit_str!(name);
                 res.extend(quote! {
                     pub struct #ident;
+
+                    impl TSParser for #ident {
+                        fn parse(root: TSNode<'_>, source: &[u8]) -> ParseResult<Self> {
+                            if root.kind() != #kind {
+                                return Err(anyhow::anyhow!("bad kind"));
+                            }
+                            Ok(Self)
+                        }
+                    }
                 })
             } else {
                 warn!("unhanded case for externals: {item:?}");
@@ -64,14 +95,35 @@ impl RuleJSON {
                 }
             }
             RuleJSON::BLANK => {}
-            RuleJSON::STRING { value: _ } => res.extend(quote! {
-                #[derive(Debug)]
-                pub struct #ident;
-            }),
+            RuleJSON::STRING { value } => {
+                let kind = lit_str!(value);
+
+                res.extend(quote! {
+                    #[derive(Debug)]
+                    pub struct #ident;
+
+                    impl TSParser for #ident {
+                        fn parse(root: TSNode<'_>, source: &[u8]) -> ParseResult<Self> {
+                            if root.kind() != #kind {
+                                return Err(anyhow::anyhow!("bad kind"));
+                            }
+                            Ok(Self)
+                        }
+                    }
+                })
+            }
             RuleJSON::PATTERN { value: _, flags: _ } => res.extend(quote! {
                 #[derive(Debug)]
                 pub struct #ident{
                     value: String
+                }
+
+                impl TSParser for #ident {
+                    fn parse(root: TSNode<'_>, source: &[u8]) -> ParseResult<Self> {
+                        Ok(Self {
+                            value: utf8_text(root, source)?.to_string()
+                        })
+                    }
                 }
             }),
             RuleJSON::SYMBOL { name } => {
