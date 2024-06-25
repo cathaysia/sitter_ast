@@ -47,7 +47,11 @@ impl RuleJSON {
         let mut res = quote! {};
 
         match self {
-            RuleJSON::ALIAS { content: _, named: _, value: _ } => {}
+            RuleJSON::ALIAS { content, named, value: _ } => {
+                if *named {
+                    res.extend(content.generate(ident)?);
+                }
+            }
             RuleJSON::BLANK => {}
             RuleJSON::STRING { value: _ } => res.extend(quote! {
                 #[derive(Debug)]
@@ -78,9 +82,16 @@ impl RuleJSON {
                         }
                         RuleJSON::SYMBOL { name } => {
                             let field_type = ident!(&name.to_case(Case::UpperCamel));
-                            mem.extend(quote! {
-                                #field_type(#field_type),
-                            });
+                            let need_box = is_recursive_type(&ident.to_string(), item);
+                            if need_box {
+                                mem.extend(quote! {
+                                    #field_type(Box<#field_type>),
+                                });
+                            } else {
+                                mem.extend(quote! {
+                                    #field_type(#field_type),
+                                });
+                            }
                         }
                         RuleJSON::SEQ { members } => {
                             let is_consis_by_symbol = members.iter().all(|item| {
@@ -98,10 +109,18 @@ impl RuleJSON {
                                     match item {
                                         RuleJSON::SYMBOL { name } => {
                                             childs.push(name.clone());
+                                            let need_box =
+                                                is_recursive_type(&ident.to_string(), item);
                                             let ident = ident!(&name.to_case(Case::UpperCamel));
-                                            mid.extend(quote! {
-                                                #ident,
-                                            });
+                                            if need_box {
+                                                mid.extend(quote! {
+                                                    Box<#ident>,
+                                                });
+                                            } else {
+                                                mid.extend(quote! {
+                                                    #ident,
+                                                });
+                                            }
                                         }
                                         _ => {}
                                     }
@@ -319,5 +338,14 @@ impl RuleJSON {
         }
 
         Ok(res)
+    }
+}
+
+fn is_recursive_type(ident: &str, value: &RuleJSON) -> bool {
+    match value {
+        RuleJSON::SYMBOL { name } => ident == name.to_case(Case::UpperCamel),
+        RuleJSON::SEQ { members } => members.iter().all(|item| !is_recursive_type(ident, item)),
+        RuleJSON::ALIAS { content, named: _, value: _ } => is_recursive_type(ident, content),
+        _ => false,
     }
 }
