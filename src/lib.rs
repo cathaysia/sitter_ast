@@ -36,6 +36,17 @@ impl GrammarJSON {
             res.extend(snippet);
         }
 
+        for item in &self.externals {
+            if let RuleJSON::SYMBOL { name } = item {
+                let ident = ident!(&name.to_case(Case::UpperCamel));
+                res.extend(quote! {
+                    pub struct #ident;
+                })
+            } else {
+                warn!("unhanded case for externals: {item:?}");
+            }
+        }
+
         Ok(res)
     }
 }
@@ -167,7 +178,7 @@ impl RuleJSON {
                             });
                         }
                         _ => {
-                            debug!("unhandled case for CHOICE: {item:?}");
+                            warn!("unhandled case for CHOICE: {item:?}");
                         }
                     }
                 }
@@ -302,8 +313,18 @@ impl RuleJSON {
                                 pub #field_name: #field_type,
                             })
                         }
+                        RuleJSON::ALIAS { content: _, named: _, value: _ } => {
+                            let name = format!("{ident}_TOKEN_{idx}");
+                            let field_name = ident!(&name.to_case(Case::Snake));
+                            let field_type = ident!(&name.to_case(Case::UpperCamel));
+
+                            res.extend(item.generate(&field_type)?);
+                            mem.extend(quote! {
+                                pub #field_name: #field_type,
+                            })
+                        }
                         _ => {
-                            debug!("unhandled case for SEQ: {item:?}");
+                            warn!("unhandled case for SEQ: {item:?}");
                         }
                     }
                 }
