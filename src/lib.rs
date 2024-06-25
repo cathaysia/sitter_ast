@@ -241,6 +241,12 @@ impl RuleJSON {
                         #mem
                     }
 
+                    impl TSParser for #ident {
+                        fn parse(root: TSNode<'_>, source: &[u8]) -> ParseResult<Self> {
+                            todo!()
+                        }
+                    }
+
                 });
             }
             RuleJSON::FIELD { name, content } => {
@@ -264,8 +270,8 @@ impl RuleJSON {
                 for (idx, item) in members.iter().enumerate() {
                     match item {
                         RuleJSON::SYMBOL { name } => {
-                            let member_ty = ident!(&name.to_case(Case::UpperCamel));
-                            let member_name = {
+                            let field_type = ident!(&name.to_case(Case::UpperCamel));
+                            let field_name = {
                                 let mut name = name.clone();
                                 if alls.contains(&name) {
                                     name += &format!("_{idx}");
@@ -277,7 +283,7 @@ impl RuleJSON {
                             };
 
                             mem.extend(quote! {
-                                pub #member_name: #member_ty,
+                                pub #field_name: #field_type,
                             });
                         }
                         RuleJSON::FIELD { name: _, content } => match content.as_ref() {
@@ -386,17 +392,36 @@ impl RuleJSON {
                         #mem
                     }
 
+                    impl TSParser for #ident {
+                        fn parse(root: TSNode<'_>, source: &[u8]) -> ParseResult<Self> {
+                            todo!()
+                        }
+                    }
                 });
             }
             RuleJSON::REPEAT1 { content } | RuleJSON::REPEAT { content } => {
-                let token_ident = ident!(&format!("{}_TOKEN", ident).to_case(Case::UpperCamel));
+                let field_type = ident!(&format!("{}_TOKEN", ident).to_case(Case::UpperCamel));
 
-                res.extend(content.generate(&token_ident));
+                res.extend(content.generate(&field_type));
 
                 res.extend(quote! {
                     #[derive(Debug)]
                     pub struct #ident {
-                        value: Vec<#token_ident>
+                        value: Vec<#field_type>
+                    }
+
+                    impl TSParser for #ident {
+                        fn parse(root: TSNode<'_>, source: &[u8]) -> ParseResult<Self> {
+                            let mut value = vec![];
+
+                            for node in root.child(&mut root.walk()){
+                                value.push(TSParser::parser(node, source)?);
+                            }
+
+                            Ok(Self {
+                                value
+                            })
+                        }
                     }
                 });
             }
