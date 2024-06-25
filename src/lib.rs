@@ -30,7 +30,7 @@ impl GrammarJSON {
     pub fn to_toke_stream(&self) -> anyhow::Result<TokenStream> {
         let mut res = TokenStream::new();
         for (name, rule) in &self.rules {
-            let ident = syn::Ident::new(&name.to_case(Case::UpperCamel), Span::call_site());
+            let ident = ident!(&name.to_case(Case::UpperCamel));
 
             let snippet = rule.generate(&ident).unwrap();
             res.extend(snippet);
@@ -60,8 +60,7 @@ impl RuleJSON {
                 }
             }),
             RuleJSON::SYMBOL { name } => {
-                let target_ident =
-                    syn::Ident::new(&name.to_case(Case::UpperCamel), Span::call_site());
+                let target_ident = ident!(&name.to_case(Case::UpperCamel));
                 res.extend(quote! {
                     pub type #ident = #target_ident;
                 })
@@ -71,19 +70,16 @@ impl RuleJSON {
                 for (idx, item) in members.iter().enumerate() {
                     match item {
                         RuleJSON::STRING { value: _ } => {
-                            let ident = {
-                                let name = format!("{ident}_TOKEN_{idx}");
-                                syn::Ident::new(&name.to_case(Case::UpperCamel), Span::call_site())
-                            };
+                            let name = format!("{ident}_TOKEN_{idx}");
+                            let field_name = ident!(&name.to_case(Case::UpperCamel));
                             mem.extend(quote! {
-                                #ident,
+                                #field_name,
                             });
                         }
                         RuleJSON::SYMBOL { name } => {
-                            let target_ident =
-                                syn::Ident::new(&name.to_case(Case::UpperCamel), Span::call_site());
+                            let field_type = ident!(&name.to_case(Case::UpperCamel));
                             mem.extend(quote! {
-                                #target_ident(#target_ident),
+                                #field_type(#field_type),
                             });
                         }
                         RuleJSON::SEQ { members } => {
@@ -180,15 +176,13 @@ impl RuleJSON {
             }
             RuleJSON::SEQ { members } => {
                 let mut mem = quote! {};
-                let mut mid = quote! {};
 
                 let mut alls = HashSet::new();
 
                 for (idx, item) in members.iter().enumerate() {
                     match item {
                         RuleJSON::SYMBOL { name } => {
-                            let member_ty =
-                                syn::Ident::new(&name.to_case(Case::UpperCamel), Span::call_site());
+                            let member_ty = ident!(&name.to_case(Case::UpperCamel));
                             let member_name = {
                                 let mut name = name.clone();
                                 if alls.contains(&name) {
@@ -197,17 +191,11 @@ impl RuleJSON {
                                     alls.insert(name.clone());
                                 }
 
-                                syn::Ident::new(&name.to_case(Case::Snake), Span::call_site())
+                                ident!(&name.to_case(Case::Snake))
                             };
-                            let kind = syn::LitStr::new(name, Span::call_site());
 
                             mem.extend(quote! {
                                 pub #member_name: #member_ty,
-                            });
-                            mid.extend(quote! {
-                                #kind => {
-                                    res.#member_name = TSParser::parse(node, source)?;
-                                }
                             });
                         }
                         RuleJSON::FIELD { name: _, content } => match content.as_ref() {
@@ -308,26 +296,8 @@ impl RuleJSON {
 
                 });
             }
-            RuleJSON::REPEAT { content } => {
-                let token_ident = syn::Ident::new(
-                    &format!("{}_TOKEN", ident).to_case(Case::UpperCamel),
-                    Span::call_site(),
-                );
-
-                res.extend(content.generate(&token_ident));
-
-                res.extend(quote! {
-                    #[derive(Debug)]
-                    pub struct #ident {
-                        value: Vec<#token_ident>
-                    }
-                });
-            }
-            RuleJSON::REPEAT1 { content } => {
-                let token_ident = syn::Ident::new(
-                    &format!("{}_TOKEN", ident).to_case(Case::UpperCamel),
-                    Span::call_site(),
-                );
+            RuleJSON::REPEAT1 { content } | RuleJSON::REPEAT { content } => {
+                let token_ident = ident!(&format!("{}_TOKEN", ident).to_case(Case::UpperCamel));
 
                 res.extend(content.generate(&token_ident));
 
